@@ -22,6 +22,11 @@ class InvalidArchiveError(AppError):
     code = "invalid_archive"
 
 
+class UploadTooLargeError(AppError):
+    status_code = 413
+    code = "upload_too_large"
+
+
 class ProcessingError(AppError):
     status_code = 422
     code = "processing_error"

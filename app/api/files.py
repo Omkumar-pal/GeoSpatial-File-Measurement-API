@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
@@ -19,13 +19,18 @@ from app.services.uploads import process_upload, save_upload
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 logger = logging.getLogger(__name__)
+UploadField = Annotated[
+    UploadFile,
+    File(..., description="A .kml or .zip containing one Shapefile."),
+]
+DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 
 @router.post("/", response_model=FileResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     request: Request,
-    file: UploadFile = File(..., description="A .kml or .zip containing one Shapefile."),
-    session: Session = Depends(get_db_session),
+    file: UploadField,
+    session: DatabaseSession,
 ) -> FileResponse:
     """Store, validate, and synchronously process a geospatial upload."""
     file_type = classify_upload(file.filename)
@@ -49,7 +54,7 @@ async def upload_file(
         uploaded_file.source_crs = dataset.source_crs
         uploaded_file.feature_count = len(dataset.features)
         uploaded_file.status = ProcessingStatus.COMPLETED.value
-        uploaded_file.completed_at = datetime.now(timezone.utc)
+        uploaded_file.completed_at = datetime.now(UTC)
         for feature in dataset.features:
             session.add(
                 FeatureMeasurement(
@@ -72,20 +77,30 @@ async def upload_file(
         raise
     except Exception as exc:
         logger.exception("Unexpected failure while processing upload %s", uploaded_file.id)
-        _mark_failed(session, uploaded_file, "Unexpected error while processing the geospatial file.")
-        raise HTTPException(status_code=500, detail="Unexpected error while processing the file.") from exc
+        _mark_failed(
+            session,
+            uploaded_file,
+            "Unexpected error while processing the geospatial file.",
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected error while processing the file.",
+        ) from exc
 
     return _file_response(uploaded_file)
 
 
 @router.get("/{file_id}/", response_model=FileResponse)
-def get_file(file_id: str, session: Session = Depends(get_db_session)) -> FileResponse:
+def get_file(file_id: str, session: DatabaseSession) -> FileResponse:
     """Return upload status and high-level metadata."""
     return _file_response(_get_file_or_404(session, file_id))
 
 
 @router.get("/{file_id}/measurements/", response_model=MeasurementsResponse)
-def get_measurements(file_id: str, session: Session = Depends(get_db_session)) -> MeasurementsResponse:
+def get_measurements(
+    file_id: str,
+    session: DatabaseSession,
+) -> MeasurementsResponse:
     """Return the normalized source geometry and results for every feature."""
     uploaded_file = _get_file_or_404(session, file_id)
     features = session.scalars(
@@ -103,7 +118,7 @@ def get_measurements(file_id: str, session: Session = Depends(get_db_session)) -
 def _mark_failed(session: Session, uploaded_file: UploadedFile, error_message: str) -> None:
     uploaded_file.status = ProcessingStatus.FAILED.value
     uploaded_file.error_message = error_message
-    uploaded_file.completed_at = datetime.now(timezone.utc)
+    uploaded_file.completed_at = datetime.now(UTC)
     session.commit()
 
 

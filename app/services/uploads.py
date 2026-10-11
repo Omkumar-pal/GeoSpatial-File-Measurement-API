@@ -34,9 +34,15 @@ async def save_upload(upload: UploadFile, destination: Path, max_upload_bytes: i
         await upload.close()
 
 
-def process_upload(stored_path: Path, file_type: str, workspace: Path, settings: Settings) -> ExtractedDataset:
+def process_upload(
+    stored_path: Path,
+    file_type: str,
+    workspace: Path,
+    settings: Settings,
+) -> ExtractedDataset:
     """Resolve an uploaded file to the dataset reader's concrete source path."""
     input_path = stored_path
     if file_type == "shapefile_zip":
-        input_path = extract_shapefile_archive(stored_path, workspace / "extracted", settings).shapefile_path
+        archive = extract_shapefile_archive(stored_path, workspace / "extracted", settings)
+        input_path = archive.shapefile_path
     return read_dataset(input_path, file_type)

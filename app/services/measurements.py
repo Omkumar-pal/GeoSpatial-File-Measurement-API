@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyproj import CRS, Transformer
-from shapely import make_valid
+from shapely import make_valid, transform
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,20 +55,21 @@ def measure_geometry(geometry: BaseGeometry | None, source_crs: str | None) -> M
     try:
         metric_crs = _select_metric_crs(valid_geometry, input_crs)
         transformer = Transformer.from_crs(input_crs, metric_crs, always_xy=True)
-        metric_geometry = transform(transformer.transform, valid_geometry)
+        metric_geometry = transform(valid_geometry, transformer.transform, interleaved=False)
     except Exception as exc:
         return MeasurementResult(None, None, None, f"Geometry could not be projected: {exc}")
 
     measurement_crs = metric_crs.to_string()
+    warning = _join_warnings(warnings)
     if geometry_type in {"Polygon", "MultiPolygon"}:
-        return MeasurementResult(metric_geometry.area, None, measurement_crs, _join_warnings(warnings))
-    return MeasurementResult(None, metric_geometry.length, measurement_crs, _join_warnings(warnings))
+        return MeasurementResult(metric_geometry.area, None, measurement_crs, warning)
+    return MeasurementResult(None, metric_geometry.length, measurement_crs, warning)
 
 
 def _select_metric_crs(geometry: BaseGeometry, source_crs: CRS) -> CRS:
     """Select a feature-local UTM CRS, or a suitable polar stereographic CRS."""
     to_wgs84 = Transformer.from_crs(source_crs, CRS.from_epsg(4326), always_xy=True)
-    geographic_geometry = transform(to_wgs84.transform, geometry)
+    geographic_geometry = transform(geometry, to_wgs84.transform, interleaved=False)
     reference = geographic_geometry.representative_point()
     longitude, latitude = reference.x, reference.y
 

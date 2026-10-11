@@ -61,11 +61,14 @@ def extract_shapefile_archive(
 
     shapefile = shapefiles[0]
     required_suffixes = {".shp", ".shx", ".dbf"}
-    available_suffixes = {path.suffix.lower() for path in shapefile.parent.glob(f"{shapefile.stem}.*")}
+    components = shapefile.parent.glob(f"{shapefile.stem}.*")
+    available_suffixes = {path.suffix.lower() for path in components}
     missing_suffixes = required_suffixes - available_suffixes
     if missing_suffixes:
         missing = ", ".join(sorted(missing_suffixes))
-        raise InvalidArchiveError(f"The Shapefile is incomplete; missing required component(s): {missing}.")
+        raise InvalidArchiveError(
+            f"The Shapefile is incomplete; missing required component(s): {missing}."
+        )
 
     return ArchiveContents(shapefile_path=shapefile)
 

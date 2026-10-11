@@ -19,7 +19,7 @@ class Settings:
     max_zip_uncompressed_bytes: int
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         data_dir = Path(os.getenv("DATA_DIR", "data")).expanduser().resolve()
         database_url = os.getenv(
             "DATABASE_URL", f"sqlite:///{(data_dir / 'geospatial.db').as_posix()}"

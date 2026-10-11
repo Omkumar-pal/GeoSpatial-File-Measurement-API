@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -39,8 +39,10 @@ class UploadedFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    features: Mapped[list["FeatureMeasurement"]] = relationship(
-        back_populates="uploaded_file", cascade="all, delete-orphan", order_by="FeatureMeasurement.feature_index"
+    features: Mapped[list[FeatureMeasurement]] = relationship(
+        back_populates="uploaded_file",
+        cascade="all, delete-orphan",
+        order_by="FeatureMeasurement.feature_index",
     )
 
 

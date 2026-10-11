@@ -1,18 +1,32 @@
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
+import geopandas as gpd
 from fastapi.testclient import TestClient
+from shapely.geometry import Polygon
 
 from app.core.config import Settings
 from app.main import create_app
 
-KML_DOCUMENT = b'''<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-  <Placemark><name>Parcel A</name><Polygon><outerBoundaryIs><LinearRing>
-    <coordinates>77.590,12.960,0 77.600,12.960,0 77.600,12.970,0 77.590,12.970,0 77.590,12.960,0</coordinates>
-  </LinearRing></outerBoundaryIs></Polygon></Placemark>
-  <Placemark><name>Route A</name><LineString><coordinates>77.590,12.960,0 77.600,12.960,0</coordinates></LineString></Placemark>
-  <Placemark><name>Marker A</name><Point><coordinates>77.590,12.960,0</coordinates></Point></Placemark>
-</Document></kml>'''
+KML_DOCUMENT = b"\n".join(
+    [
+        b'<?xml version="1.0" encoding="UTF-8"?>',
+        b'<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
+        b"  <Placemark><name>Parcel A</name><Polygon><outerBoundaryIs><LinearRing>",
+        b"    <coordinates>",
+        b"      77.590,12.960,0 77.600,12.960,0 77.600,12.970,0",
+        b"      77.590,12.970,0 77.590,12.960,0",
+        b"    </coordinates>",
+        b"  </LinearRing></outerBoundaryIs></Polygon></Placemark>",
+        b"  <Placemark><name>Route A</name><LineString>",
+        b"    <coordinates>77.590,12.960,0 77.600,12.960,0</coordinates>",
+        b"  </LineString></Placemark>",
+        b"  <Placemark><name>Marker A</name><Point>",
+        b"    <coordinates>77.590,12.960,0</coordinates>",
+        b"  </Point></Placemark>",
+        b"</Document></kml>",
+    ]
+)
 
 
 def test_health_endpoint(tmp_path: Path) -> None:
@@ -54,6 +68,34 @@ def test_unknown_file_type_is_rejected(tmp_path: Path) -> None:
 
     assert response.status_code == 415
     assert response.json()["code"] == "unsupported_file"
+
+
+def test_shapefile_zip_upload_persists_measurement(tmp_path: Path) -> None:
+    shapefile_directory = tmp_path / "shapefile"
+    shapefile_directory.mkdir()
+    dataset = gpd.GeoDataFrame(
+        {"site_id": ["parcel-1"]},
+        geometry=[Polygon([(77.59, 12.96), (77.60, 12.96), (77.60, 12.97), (77.59, 12.96)])],
+        crs="EPSG:4326",
+    )
+    shapefile_path = shapefile_directory / "parcel.shp"
+    dataset.to_file(shapefile_path)
+    archive_path = tmp_path / "parcel.zip"
+    with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as archive:
+        for component in shapefile_directory.iterdir():
+            archive.write(component, component.name)
+
+    with TestClient(create_app(_settings(tmp_path))) as client, archive_path.open("rb") as archive:
+        response = client.post(
+            "/api/files/",
+            files={"file": ("parcel.zip", archive, "application/zip")},
+        )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["file_type"] == "shapefile_zip"
+    assert payload["feature_count"] == 1
+    assert payload["status"] == "COMPLETED"
 
 
 def _settings(tmp_path: Path) -> Settings:

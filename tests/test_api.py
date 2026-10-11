@@ -29,6 +29,14 @@ KML_DOCUMENT = b"\n".join(
 )
 
 
+def test_root_redirects_to_docs(tmp_path: Path) -> None:
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        response = client.get("/", follow_redirects=False)
+
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/docs"
+
+
 def test_health_endpoint(tmp_path: Path) -> None:
     with TestClient(create_app(_settings(tmp_path))) as client:
         response = client.get("/health")

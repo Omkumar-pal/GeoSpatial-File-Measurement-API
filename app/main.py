@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.files import router as files_router
 from app.core.config import Settings
@@ -42,6 +42,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=exc.status_code,
             content=ErrorResponse(error=exc.message, code=exc.code).model_dump(),
         )
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse(url="/docs")
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     def health() -> HealthResponse:

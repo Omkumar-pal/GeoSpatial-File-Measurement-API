@@ -35,6 +35,7 @@ class UploadedFile(Base):
     status: Mapped[str] = mapped_column(String(16), default=ProcessingStatus.PENDING.value)
     feature_count: Mapped[int] = mapped_column(Integer, default=0)
     source_crs: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    measurement_method: Mapped[str] = mapped_column(String(16), default="auto")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -62,5 +63,7 @@ class FeatureMeasurement(Base):
     area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
     length_m: Mapped[float | None] = mapped_column(Float, nullable=True)
     warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    measurement_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    accuracy_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     uploaded_file: Mapped[UploadedFile] = relationship(back_populates="features")

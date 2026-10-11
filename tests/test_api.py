@@ -3,7 +3,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import geopandas as gpd
 from fastapi.testclient import TestClient
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from app.core.config import Settings
 from app.main import create_app
@@ -48,18 +48,48 @@ def test_kml_upload_persists_measurements(tmp_path: Path) -> None:
 
         assert file_data["status"] == "COMPLETED"
         assert file_data["feature_count"] == 3
-        assert file_data["crs"] == "EPSG:4326"
+        assert file_data["source_crs"] == "EPSG:4326"
+        assert file_data["measurement_method"] == "auto"
+        assert file_data["summary"] == {
+            "measured": 2,
+            "warnings": 1,
+            "measurement_method": "projected",
+        }
+        assert file_data["links"]["measurements"].endswith("/measurements?limit=25")
 
         info_response = client.get(f"/api/files/{file_data['id']}/")
-        measurements_response = client.get(f"/api/files/{file_data['id']}/measurements/")
+        measurements_response = client.get(f"/api/files/{file_data['id']}/measurements")
+        first_page_response = client.get(
+            f"/api/files/{file_data['id']}/measurements?limit=1&include=geometry,properties"
+        )
+        features_response = client.get(f"/api/files/{file_data['id']}/features?limit=1")
 
     assert info_response.status_code == 200
     assert measurements_response.status_code == 200
-    measurements = measurements_response.json()["measurements"]
+    measurements_payload = measurements_response.json()
+    measurements = measurements_payload["items"]
     assert len(measurements) == 3
-    assert measurements[0]["area_sqm"] is not None
-    assert measurements[1]["length_m"] is not None
-    assert measurements[2]["area_sqm"] is None
+    assert measurements_payload["limit"] == 25
+    assert measurements_payload["offset"] == 0
+    assert measurements_payload["total"] == 3
+    assert "geometry" not in measurements[0]
+    assert "properties" not in measurements[0]
+    assert measurements[0]["measurement"]["area_m2"] is not None
+    assert measurements[0]["measurement"]["method"] == "projected"
+    assert measurements[0]["measurement"]["measurement_crs"] == "EPSG:32643"
+    assert measurements[1]["measurement"]["length_m"] is not None
+    assert measurements[1]["measurement"]["method"] == "projected"
+    assert measurements[2]["measurement"]["status"] == "not_applicable"
+
+    assert first_page_response.status_code == 200
+    first_item = first_page_response.json()["items"][0]
+    assert first_page_response.json()["total"] == 3
+    assert first_item["geometry"]["type"] == "Polygon"
+    assert first_item["properties"]["Name"] == "Parcel A"
+
+    assert features_response.status_code == 200
+    assert "geometry" not in features_response.json()["items"][0]
+    assert "properties" not in features_response.json()["items"][0]
 
 
 def test_unknown_file_type_is_rejected(tmp_path: Path) -> None:
@@ -70,12 +100,41 @@ def test_unknown_file_type_is_rejected(tmp_path: Path) -> None:
     assert response.json()["code"] == "unsupported_file"
 
 
+def test_unreadable_kml_does_not_leak_server_paths(tmp_path: Path) -> None:
+    bad_kml = ("plot.kml", b"this is not kml", "application/vnd.google-earth.kml+xml")
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        response = client.post("/api/files/", files={"file": bad_kml})
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert "plot.kml" in error
+    for leaked in ("C:", "\\", "uploads", "data/", ".db"):
+        assert leaked not in error, error
+    # No workspace UUID may appear in the client-facing message.
+    import re
+
+    assert not re.search(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        error,
+    ), error
+
+
 def test_shapefile_zip_upload_persists_measurement(tmp_path: Path) -> None:
     shapefile_directory = tmp_path / "shapefile"
     shapefile_directory.mkdir()
     dataset = gpd.GeoDataFrame(
-        {"site_id": ["parcel-1"]},
-        geometry=[Polygon([(77.59, 12.96), (77.60, 12.96), (77.60, 12.97), (77.59, 12.96)])],
+        {"ISO_A3": ["FJI"], "NAME_EN": ["Fiji"], "CONTINENT": ["Oceania"]},
+        geometry=[
+            MultiPolygon(
+                [
+                    Polygon([(178, -18), (179, -18), (179, -17), (178, -17), (178, -18)]),
+                    Polygon(
+                        [(-179, -18), (-178, -18), (-178, -17), (-179, -17), (-179, -18)]
+                    ),
+                ]
+            )
+        ],
         crs="EPSG:4326",
     )
     shapefile_path = shapefile_directory / "parcel.shp"
@@ -90,12 +149,59 @@ def test_shapefile_zip_upload_persists_measurement(tmp_path: Path) -> None:
             "/api/files/",
             files={"file": ("parcel.zip", archive, "application/zip")},
         )
+        measurements_response = client.get(
+            f"/api/files/{response.json()['id']}/measurements?include=geometry"
+        )
 
     assert response.status_code == 201, response.text
     payload = response.json()
     assert payload["file_type"] == "shapefile_zip"
     assert payload["feature_count"] == 1
     assert payload["status"] == "COMPLETED"
+    assert payload["summary"]["measured"] == 1
+    assert payload["summary"]["measurement_method"] == "geodesic"
+    assert measurements_response.status_code == 200
+    item = measurements_response.json()["items"][0]
+    assert item["feature_id"] == "FJI"
+    assert item["attributes"] == {
+        "NAME_EN": "Fiji",
+        "ISO_A3": "FJI",
+        "CONTINENT": "Oceania",
+    }
+    assert item["measurement"]["method"] == "geodesic"
+    assert item["measurement"]["area_m2"] > 20_000_000_000
+    assert item["geometry"]["type"] == "MultiPolygon"
+
+
+def test_upload_measurement_method_is_persisted_and_forced(tmp_path: Path) -> None:
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        auto_response = client.post(
+            "/api/files/",
+            files={"file": ("survey.kml", KML_DOCUMENT, "application/vnd.google-earth.kml+xml")},
+        )
+        assert auto_response.status_code == 201, auto_response.text
+        assert auto_response.json()["measurement_method"] == "auto"
+        assert auto_response.json()["summary"]["measurement_method"] == "projected"
+
+        geodesic_response = client.post(
+            "/api/files/?measurement_method=geodesic",
+            files={"file": ("survey.kml", KML_DOCUMENT, "application/vnd.google-earth.kml+xml")},
+        )
+        assert geodesic_response.status_code == 201, geodesic_response.text
+        geodesic_data = geodesic_response.json()
+        assert geodesic_data["measurement_method"] == "geodesic"
+        assert geodesic_data["summary"]["measurement_method"] == "geodesic"
+
+        items = client.get(f"/api/files/{geodesic_data['id']}/measurements").json()["items"]
+        assert items[0]["measurement"]["method"] == "geodesic"
+        assert items[0]["measurement"].get("measurement_crs") is None
+        assert items[1]["measurement"]["method"] == "geodesic"
+
+        invalid_response = client.post(
+            "/api/files/?measurement_method=utm",
+            files={"file": ("survey.kml", KML_DOCUMENT, "application/vnd.google-earth.kml+xml")},
+        )
+        assert invalid_response.status_code == 422
 
 
 def _settings(tmp_path: Path) -> Settings:

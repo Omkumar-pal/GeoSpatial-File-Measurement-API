@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.core.errors import UploadTooLargeError
 from app.services.archive import extract_shapefile_archive
 from app.services.geospatial import ExtractedDataset, read_dataset
+from app.services.measurements import MeasurementMethod
 
 _CHUNK_SIZE = 1024 * 1024
 
@@ -39,10 +40,11 @@ def process_upload(
     file_type: str,
     workspace: Path,
     settings: Settings,
+    measurement_method: MeasurementMethod = "auto",
 ) -> ExtractedDataset:
     """Resolve an uploaded file to the dataset reader's concrete source path."""
     input_path = stored_path
     if file_type == "shapefile_zip":
         archive = extract_shapefile_archive(stored_path, workspace / "extracted", settings)
         input_path = archive.shapefile_path
-    return read_dataset(input_path, file_type)
+    return read_dataset(input_path, file_type, measurement_method)

@@ -9,11 +9,13 @@
   <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/GeoPandas-1.0+-139C5A?style=flat&logo=geopandas&logoColor=white" alt="GeoPandas" />
   <img src="https://img.shields.io/badge/PyProj-3.6+-005571?style=flat" alt="PyProj" />
-  <img src="https://img.shields.io/badge/Tests-19%20Passing-brightgreen?style=flat" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-20%20Passing-brightgreen?style=flat" alt="Tests" />
+  <a href="https://geospatial-file-measurement-api-k51h.onrender.com/docs"><img src="https://img.shields.io/badge/Render-Live%20Demo-46E3B7?style=flat&logo=render&logoColor=white" alt="Render Live Demo" /></a>
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat" alt="License" />
 </p>
 
 <p align="center">
+  <a href="https://geospatial-file-measurement-api-k51h.onrender.com/docs"><b>🚀 Live Demo (Render)</b></a> •
   <a href="#-project-overview--assignment-context">Overview</a> •
   <a href="#-requirements-traceability">Requirements</a> •
   <a href="#-architectural--design-decisions">Design Decisions</a> •
@@ -22,6 +24,19 @@
   <a href="#-api-documentation">API Reference</a> •
   <a href="#-learnings--future-scope">Learnings & Future Scope</a>
 </p>
+
+---
+
+## 🌐 Live Deployment & Interactive Docs
+
+The API is fully deployed and accessible on Render:
+
+- **🚀 Interactive Swagger API:** [https://geospatial-file-measurement-api-k51h.onrender.com/docs](https://geospatial-file-measurement-api-k51h.onrender.com/docs)
+- **📖 Live ReDoc Documentation:** [https://geospatial-file-measurement-api-k51h.onrender.com/redoc](https://geospatial-file-measurement-api-k51h.onrender.com/redoc)
+- **💓 Live Health Check:** [https://geospatial-file-measurement-api-k51h.onrender.com/health](https://geospatial-file-measurement-api-k51h.onrender.com/health)
+
+> [!NOTE]
+> Hosted on Render's free tier. If the service has been idle for 15+ minutes, the first request may take ~30–45 seconds while the Docker container wakes up.
 
 ---
 
@@ -284,6 +299,11 @@ Uploads and processes a geospatial file (`.kml` or `.zip`).
 
 #### Example Request:
 ```powershell
+# Live Deployment:
+curl.exe -X POST "https://geospatial-file-measurement-api-k51h.onrender.com/api/files/?measurement_method=auto" `
+  -F "file=@survey.kml"
+
+# Local Server:
 curl.exe -X POST "http://127.0.0.1:8000/api/files/?measurement_method=auto" `
   -F "file=@survey.kml"
 ```
